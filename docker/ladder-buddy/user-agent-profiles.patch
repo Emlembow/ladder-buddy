@@ -1,0 +1,220 @@
+diff --git a/handlers/api.go b/handlers/api.go
+index f88e79e..9a3524c 100644
+--- a/handlers/api.go
++++ b/handlers/api.go
+@@ -8,7 +8,9 @@ import (
+ )
+ 
+ type JsonRequest struct {
+-	URL string `json:"url"`
++	URL              string `json:"url"`
++	UserAgentProfile string `json:"userAgentProfile,omitempty"`
++	UserAgent        string `json:"userAgent,omitempty"`
+ }
+ 
+ var version = "dev"
+@@ -16,12 +18,12 @@ var version = "dev"
+ func Api(c *fiber.Ctx) error {
+ 	var url string
+ 	queries := c.Queries()
++	var jsonReq JsonRequest
+ 
+ 	// Check content type to determine if it's JSON
+ 	contentType := c.Get("Content-Type")
+ 	if contentType == "application/json" {
+ 		// Parse JSON body
+-		var jsonReq JsonRequest
+ 		if err := c.BodyParser(&jsonReq); err != nil {
+ 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+ 				"error": "Invalid JSON request",
+@@ -33,7 +35,12 @@ func Api(c *fiber.Ctx) error {
+ 		url = c.Params("*")
+ 	}
+ 
+-	body, req, resp, err := fetchSite(url, queries)
++	overrides := requestOverridesFromHeaders(c)
++	if jsonReq.UserAgentProfile != "" || jsonReq.UserAgent != "" {
++		overrides = requestOverridesFromValues(jsonReq.UserAgentProfile, jsonReq.UserAgent)
++	}
++
++	body, req, resp, err := fetchSite(url, queries, overrides)
+ 	if err != nil {
+ 		log.Println("ERROR:", err)
+ 		c.SendStatus(500)
+@@ -53,6 +60,7 @@ func Api(c *fiber.Ctx) error {
+ 		})
+ 	}
+ 
++	response.Response.Status = resp.StatusCode
+ 	response.Response.Headers = make([]any, 0, len(resp.Header))
+ 	for k, v := range resp.Header {
+ 		response.Response.Headers = append(response.Response.Headers, map[string]string{
+@@ -71,6 +79,7 @@ type Response struct {
+ 		Headers []interface{} `json:"headers"`
+ 	} `json:"request"`
+ 	Response struct {
++		Status  int           `json:"status"`
+ 		Headers []interface{} `json:"headers"`
+ 	} `json:"response"`
+ }
+diff --git a/handlers/proxy.go b/handlers/proxy.go
+index 56f2b0a..6d40693 100644
+--- a/handlers/proxy.go
++++ b/handlers/proxy.go
+@@ -174,6 +174,105 @@ func getFlareSolverrCookies(targetURL string) (string, error) {
+ 	return strings.Join(cookies, "; "), nil
+ }
+ 
++const (
++	userAgentProfileHeader = "X-Ladder-User-Agent-Profile"
++	userAgentHeader        = "X-Ladder-User-Agent"
++)
++
++type RequestOverrides struct {
++	UserAgentProfile string
++	UserAgent        string
++}
++
++var userAgentProfiles = map[string]string{
++	"browser-chrome": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
++
++	"googlebot-desktop": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html) Chrome/149.0.0.0 Safari/537.36",
++	"googlebot-classic": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
++	"bingbot-desktop":   "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm) Chrome/149.0.0.0 Safari/537.36",
++	"bingbot-classic":   "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
++	"yahooslurp":        "Mozilla/5.0 (compatible; Yahoo! Slurp; http://help.yahoo.com/help/us/ysearch/slurp)",
++	"baiduspider":       "Mozilla/5.0 (compatible; Baiduspider/2.0; +http://www.baidu.com/search/spider.html)",
++	"yandexbot":         "Mozilla/5.0 (compatible; YandexBot/3.0; +http://yandex.com/bots)",
++
++	"facebookexternalhit":    "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
++	"twitterbot":             "Twitterbot/1.0 Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/5.12.3 Chrome/69.0.3497.128 Safari/537.36",
++	"linkedinbot":            "LinkedInBot/1.0 (compatible; Mozilla/5.0; +http://www.linkedin.com)",
++	"slackbot-linkexpanding": "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)",
++	"pinterestbot":           "Mozilla/5.0 (compatible; Pinterestbot/1.0; +https://www.pinterest.com/bot.html)",
++
++	"oai-searchbot":    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36; compatible; OAI-SearchBot/1.3; +https://openai.com/searchbot",
++	"chatgpt-user":     "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot",
++	"gptbot":           "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.3; +https://openai.com/gptbot",
++	"claudebot":        "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ClaudeBot/1.0; +claudebot@anthropic.com)",
++	"claude-user":      "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-User/1.0; +Claude-User@anthropic.com)",
++	"claude-searchbot": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-SearchBot/1.0; +Claude-SearchBot@anthropic.com)",
++	"perplexitybot":    "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)",
++	"perplexity-user":  "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Perplexity-User/1.0; +https://perplexity.ai/perplexity-user)",
++
++	"ahrefsbot":  "Mozilla/5.0 (compatible; AhrefsBot/7.0; +http://ahrefs.com/robot/)",
++	"semrushbot": "Mozilla/5.0 (compatible; SemrushBot/7~bl; +http://www.semrush.com/bot.html)",
++	"mj12bot":    "MJ12bot/v1.4.0 (http://www.majestic12.co.uk/bot.php?+)",
++
++	"pingdom":        "Pingdom.com_bot_version_1.1 (+http://www.pingdom.com/)",
++	"uptimerobot":    "UptimeRobot/2.0 (+http://www.uptimerobot.com/)",
++	"betterstackbot": "BetterStackBot/1.0 (+https://betterstack.com/docs/monitoring/uptime-robot/bot/)",
++	"cron-job-org":   "cron-job.org/1.2 (+https://cron-job.org/en/faq/)",
++	"anthropic-ai":   "Mozilla/5.0 (compatible; anthropic-ai/1.0; +http://www.anthropic.com/bot.html)",
++
++	"censysinspect": "Mozilla/5.0 (compatible; CensysInspect/1.1; +https://about.censys.io/)",
++	"shodan":        "Mozilla/5.0 (compatible; Shodan/1.0; +https://www.shodan.io/bot)",
++	"bitsightbot":   "Mozilla/5.0 (compatible; BitSightBot/1.0)",
++}
++
++func requestUserAgentAllowed() bool {
++	return os.Getenv("ALLOW_REQUEST_USER_AGENT") == "true"
++}
++
++func customUserAgentAllowed() bool {
++	return requestUserAgentAllowed() && os.Getenv("ALLOW_CUSTOM_USER_AGENT") == "true"
++}
++
++func requestOverridesFromHeaders(c *fiber.Ctx) RequestOverrides {
++	return requestOverridesFromValues(c.Get(userAgentProfileHeader), c.Get(userAgentHeader))
++}
++
++func requestOverridesFromValues(profile string, userAgent string) RequestOverrides {
++	if !requestUserAgentAllowed() {
++		return RequestOverrides{}
++	}
++
++	overrides := RequestOverrides{
++		UserAgentProfile: strings.TrimSpace(profile),
++	}
++
++	if customUserAgentAllowed() {
++		overrides.UserAgent = strings.TrimSpace(userAgent)
++	}
++
++	return overrides
++}
++
++func resolveUserAgent(rule ruleset.Rule, overrides RequestOverrides) string {
++	if requestUserAgentAllowed() {
++		if overrides.UserAgentProfile != "" {
++			if userAgent, ok := userAgentProfiles[overrides.UserAgentProfile]; ok {
++				return userAgent
++			}
++		}
++
++		if customUserAgentAllowed() && overrides.UserAgent != "" {
++			return overrides.UserAgent
++		}
++	}
++
++	if rule.Headers.UserAgent != "" {
++		return rule.Headers.UserAgent
++	}
++
++	return UserAgent
++}
++
+ func ProxySite(rulesetPath string) fiber.Handler {
+ 	if rulesetPath != "" {
+ 		rs, err := ruleset.NewRuleset(rulesetPath)
+@@ -191,7 +290,7 @@ func ProxySite(rulesetPath string) fiber.Handler {
+ 		}
+ 
+ 		queries := c.Queries()
+-		body, _, resp, err := fetchSite(url, queries)
++		body, _, resp, err := fetchSite(url, queries, requestOverridesFromHeaders(c))
+ 		if err != nil {
+ 			log.Println("ERROR:", err)
+ 			c.SendStatus(fiber.StatusInternalServerError)
+@@ -201,6 +300,7 @@ func ProxySite(rulesetPath string) fiber.Handler {
+ 		c.Cookie(&fiber.Cookie{})
+ 		c.Set("Content-Type", resp.Header.Get("Content-Type"))
+ 		c.Set("Content-Security-Policy", resp.Header.Get("Content-Security-Policy"))
++		c.Set("X-Ladder-Upstream-Status", strconv.Itoa(resp.StatusCode))
+ 
+ 		return c.SendString(body)
+ 	}
+@@ -242,7 +342,7 @@ func modifyURL(uri string, rule ruleset.Rule) (string, error) {
+ 	return newUrl.String(), nil
+ }
+ 
+-func fetchSite(urlpath string, queries map[string]string) (string, *http.Request, *http.Response, error) {
++func fetchSite(urlpath string, queries map[string]string, overrides RequestOverrides) (string, *http.Request, *http.Response, error) {
+ 	urlQuery := "?"
+ 	if len(queries) > 0 {
+ 		for k, v := range queries {
+@@ -278,11 +378,7 @@ func fetchSite(urlpath string, queries map[string]string) (string, *http.Request
+ 	}
+ 	req, _ := http.NewRequest("GET", url, nil)
+ 
+-	if rule.Headers.UserAgent != "" {
+-		req.Header.Set("User-Agent", rule.Headers.UserAgent)
+-	} else {
+-		req.Header.Set("User-Agent", UserAgent)
+-	}
++	req.Header.Set("User-Agent", resolveUserAgent(rule, overrides))
+ 
+ 	if rule.Headers.XForwardedFor != "" {
+ 		if rule.Headers.XForwardedFor != "none" {
+diff --git a/handlers/raw.go b/handlers/raw.go
+--- a/handlers/raw.go
++++ b/handlers/raw.go
+@@ -11,7 +11,7 @@ func Raw(c *fiber.Ctx) error {
+ 	urlQuery := c.Params("*")
+ 
+ 	queries := c.Queries()
+-	body, _, _, err := fetchSite(urlQuery, queries)
++	body, _, _, err := fetchSite(urlQuery, queries, requestOverridesFromHeaders(c))
+ 	if err != nil {
+ 		log.Println("ERROR:", err)
+ 		c.SendStatus(500)

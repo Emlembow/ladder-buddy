@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ladder Buddy</title>
+    <link rel="stylesheet" href="/src/popup.css" />
+  </head>
+  <body>
+    <main class="popup">
+      <header class="popup-header">
+        <p class="eyebrow">Ladder Buddy</p>
+        <h1>Open current page</h1>
+      </header>
+
+      <section class="quick-actions" aria-label="Page actions">
+        <button id="reader-button" class="primary-action" type="button" data-action="reader" disabled>Open reader</button>
+        <button id="open-button" class="secondary-action" type="button" data-action="proxy" disabled>Open proxy</button>
+      </section>
+
+      <p id="status" role="status"></p>
+
+      <details id="settings-panel" class="settings-panel">
+        <summary>
+          <span>Settings</span>
+          <span id="settings-summary">Loading...</span>
+        </summary>
+
+        <form id="settings-form">
+          <label>
+            Ladder URL
+            <input id="base-url" name="baseUrl" type="url" autocomplete="url" required />
+          </label>
+
+          <label>
+            Auth
+            <select id="auth-mode" name="authMode">
+              <option value="none">None</option>
+              <option value="basic">Basic</option>
+              <option value="cloudflareAccess">Cloudflare Access</option>
+            </select>
+          </label>
+
+          <fieldset id="basic-fields" hidden>
+            <label>
+              Username
+              <input id="basic-username" name="basicUsername" autocomplete="username" />
+            </label>
+            <label>
+              Password
+              <input id="basic-password" name="basicPassword" type="password" autocomplete="current-password" />
+            </label>
+          </fieldset>
+
+          <fieldset id="cloudflare-fields" hidden>
+            <label>
+              Client ID
+              <input id="cloudflare-client-id" name="cloudflareClientId" autocomplete="off" />
+            </label>
+            <label>
+              Client secret
+              <input id="cloudflare-client-secret" name="cloudflareClientSecret" type="password" autocomplete="off" />
+            </label>
+          </fieldset>
+
+          <label>
+            Upstream UA
+            <select id="user-agent-mode" name="userAgentMode"></select>
+          </label>
+
+          <fieldset id="custom-user-agent-fields" hidden>
+            <label>
+              Custom user agent
+              <input id="custom-user-agent" name="customUserAgent" autocomplete="off" />
+            </label>
+          </fieldset>
+
+          <label>
+            Reader blocked hosts
+            <textarea
+              id="reader-blocked-hosts"
+              name="readerBlockedHosts"
+              rows="3"
+              placeholder="example.com&#10;*.example.org"
+            ></textarea>
+          </label>
+
+          <button id="save-button" type="submit">Save settings</button>
+        </form>
+      </details>
+    </main>
+    <script type="module" src="/src/popup.ts"></script>
+  </body>
+</html>

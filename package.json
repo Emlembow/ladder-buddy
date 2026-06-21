@@ -1,0 +1,31 @@
+{
+  "name": "ladder-buddy",
+  "version": "0.1.0",
+  "description": "Chrome extension pairing for a user-controlled everywall/ladder proxy.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --mode development --watch",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "preflight": "pnpm type-check && pnpm lint && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/chrome": "^0.1.40",
+    "eslint": "^10.2.1",
+    "globals": "^17.5.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.59.0",
+    "vite": "^8.0.10",
+    "vitest": "^4.1.5"
+  },
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=10"
+  }
+}

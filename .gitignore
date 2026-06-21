@@ -1,0 +1,38 @@
+# dependencies
+**/node_modules
+
+# testing
+**/coverage
+
+# build
+**/dist
+**/build
+**/dist-zip
+chrome-extension/manifest.js
+**/*.tsbuildinfo
+
+# env
+**/.env.*
+!.env.example
+**/.env
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# editor
+.idea
+.fleet
+.zed
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# caches
+**/.turbo
+**/.cache

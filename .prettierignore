@@ -1,0 +1,9 @@
+dist
+build
+dist-zip
+node_modules
+.turbo
+.cache
+coverage
+pnpm-lock.yaml
+*.md
