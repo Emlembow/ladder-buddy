@@ -7,6 +7,7 @@
 # build
 **/dist
 **/build
+/release/
 **/dist-zip
 chrome-extension/manifest.js
 **/*.tsbuildinfo

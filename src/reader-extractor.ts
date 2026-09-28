@@ -114,6 +114,18 @@ const normalizeReaderUrl = (value: string, sourceUrl: string) => {
   return new URL(value, sourceUrl).href;
 };
 
+export const safeReaderHref = (value: string, sourceUrl: string): string | undefined => {
+  try {
+    // Ladder turns absolute links into paths under its own origin. Restore the
+    // original destination before resolving ordinary relative article links.
+    const destination = /^\/https?:\/\//i.test(value) ? value.slice(1) : value;
+    const url = new URL(destination, sourceUrl);
+    return ['http:', 'https:', 'mailto:'].includes(url.protocol) ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const rewriteAssetUrl = (value: string, sourceUrl: string, ladderBaseUrl: string) => {
   if (!value || value.startsWith('data:') || value.startsWith('blob:')) {
     return value;
@@ -157,9 +169,12 @@ const sanitizeNode = (node: Node, doc: Document, sourceUrl: string, ladderBaseUr
     if (tag === 'a') {
       const href = element.getAttribute('href');
       if (href) {
-        container.setAttribute('href', normalizeReaderUrl(href, sourceUrl));
-        container.setAttribute('target', '_blank');
-        container.setAttribute('rel', 'noreferrer noopener');
+        const safeHref = safeReaderHref(href, sourceUrl);
+        if (safeHref) {
+          container.setAttribute('href', safeHref);
+          container.setAttribute('target', '_blank');
+          container.setAttribute('rel', 'noreferrer noopener');
+        }
       }
     }
 

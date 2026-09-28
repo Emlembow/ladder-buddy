@@ -1,8 +1,14 @@
 import { getAuthHeaders, getOriginPattern, getUserAgentHeaders, type LadderSettings } from './ladder';
 import type { UserAgentProfileId } from './user-agents';
 
-export const AUTH_RULE_ID = 1;
-export const REQUEST_HEADERS_RULE_ID = AUTH_RULE_ID;
+export const LEGACY_DYNAMIC_RULE_ID = 1;
+
+export const sessionRuleIdForTab = (tabId: number) => tabId + 1;
+
+export type RequestRuleScope = {
+  tabId: number;
+  initiatorDomain?: string;
+};
 
 const resourceTypes: `${chrome.declarativeNetRequest.ResourceType}`[] = [
   'main_frame',
@@ -22,6 +28,7 @@ const resourceTypes: `${chrome.declarativeNetRequest.ResourceType}`[] = [
 
 export const buildRequestHeadersRule = (
   settings: LadderSettings,
+  scope: RequestRuleScope,
   selectedProfile?: UserAgentProfileId,
 ): chrome.declarativeNetRequest.Rule | undefined => {
   const requestHeaders = [...getAuthHeaders(settings), ...getUserAgentHeaders(settings, selectedProfile)]
@@ -33,7 +40,7 @@ export const buildRequestHeadersRule = (
   }
 
   return {
-    id: REQUEST_HEADERS_RULE_ID,
+    id: sessionRuleIdForTab(scope.tabId),
     priority: 1,
     action: {
       type: 'modifyHeaders',
@@ -41,9 +48,9 @@ export const buildRequestHeadersRule = (
     },
     condition: {
       urlFilter: `|${getOriginPattern(settings.baseUrl).slice(0, -1)}`,
+      tabIds: [scope.tabId],
+      ...(scope.initiatorDomain ? { initiatorDomains: [scope.initiatorDomain] } : {}),
       resourceTypes,
     },
   };
 };
-
-export const buildAuthRule = buildRequestHeadersRule;

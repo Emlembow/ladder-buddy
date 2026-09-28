@@ -1,6 +1,6 @@
-# Ladder Buddy Docker Setup
+# Alternate Ladder Buddy Docker Setup
 
-Ladder Buddy includes a recommended Docker setup for [everywall/ladder](https://github.com/everywall/ladder). It is still upstream Ladder, built locally, with one small patch that lets the extension choose an upstream user-agent profile per request.
+The [Mac installer](../README.md#install-on-a-mac) is the shortest path. Docker remains available for development and other platforms. It builds [everywall/ladder](https://github.com/everywall/ladder) from a pinned commit with a patch that lets the extension choose an upstream user-agent profile per request.
 
 ## Local Docker
 
@@ -18,7 +18,16 @@ Copy-Item .env.example .env
 docker compose up -d ladder
 ```
 
-Use these extension settings:
+Build the extension with Node.js 24+ and pnpm 10+:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm preflight
+```
+
+In Chrome, open `chrome://extensions`, enable **Developer mode**, select **Load unpacked**, and choose this repository's `dist` folder.
+
+Open **Advanced settings** in the extension and select **Custom Ladder**. Use these connection settings:
 
 - Ladder URL: `http://127.0.0.1:8080`
 - Auth: `Basic`
@@ -48,7 +57,7 @@ Useful `.env` knobs:
 
 ```dotenv
 LADDER_PORT=8080
-LADDER_REF=main
+LADDER_REF=76143f7473a86e750787cf6f44756964363f9bbc
 LADDER_USERPASS=admin:change-me
 LADDER_RULESET=https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml
 LADDER_LOG_URLS=false
@@ -57,7 +66,7 @@ LADDER_ALLOW_REQUEST_USER_AGENT=true
 LADDER_ALLOW_CUSTOM_USER_AGENT=false
 ```
 
-Set `LADDER_REF` to a tag or commit if you want to pin the upstream Ladder source instead of building from `main`.
+The default is the tested upstream commit. Change `LADDER_REF` only when also updating and validating the patch against that commit.
 
 ## User-Agent Modes
 
@@ -98,7 +107,7 @@ Use `https://ladder.example.com` in Ladder Buddy and set Auth to Cloudflare Acce
 - Client ID -> `CF-Access-Client-Id`
 - Client secret -> `CF-Access-Client-Secret`
 
-Keep `LADDER_USERPASS` enabled as a second gate when the proxy is reachable from the internet.
+The extension's custom connection supports one auth mode at a time. If using Cloudflare Access, set `LADDER_USERPASS=` in `.env` so Ladder does not also require Basic auth; keep the tunnel behind a Cloudflare Access policy. For a direct connection, use Basic auth with a unique password instead of the example value.
 
 ## User-Agent Sources
 

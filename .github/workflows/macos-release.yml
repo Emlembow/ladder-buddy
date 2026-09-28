@@ -1,0 +1,100 @@
+name: macOS release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+      - name: Verify release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const tag = process.env.RELEASE_TAG;
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const ext = JSON.parse(fs.readFileSync('public/manifest.json', 'utf8'));
+          if (tag !== `v${pkg.version}` || pkg.version !== ext.version) {
+            throw new Error(`Version mismatch: ${tag}, package ${pkg.version}, extension ${ext.version}`);
+          }
+          const digest = crypto.createHash('sha256').update(Buffer.from(ext.key, 'base64')).digest().subarray(0, 16);
+          const id = [...digest].map(byte => String.fromCharCode(97 + (byte >> 4), 97 + (byte & 15))).join('');
+          if (id !== 'pgfogjceniomjagflcagnnckcpmlanpf') {
+            throw new Error(`Extension key changed the stable ID to ${id}`);
+          }
+          NODE
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm preflight
+      - run: bash -n scripts/install-macos.sh scripts/build-macos-release.sh
+      - run: (cd mac/helper && go test ./...)
+      - name: Build macOS archives
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bash scripts/build-macos-release.sh "$RELEASE_TAG"
+      - name: Verify release checksums
+        run: (cd release && shasum -a 256 -c SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-release-assets
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-release-assets
+          path: release/
+      - name: Verify downloaded assets
+        run: (cd release && shasum -a 256 -c SHA256SUMS)
+      - name: Exercise packaged install and service
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 scripts/smoke-macos-release.py release "$RELEASE_TAG"
+
+  release:
+    needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-release-assets
+          path: release/
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" release/* --title "Ladder Buddy $RELEASE_TAG" --notes-file .github/RELEASE_NOTES.md --verify-tag

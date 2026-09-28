@@ -1,4 +1,4 @@
-import { REQUEST_HEADERS_RULE_ID, buildRequestHeadersRule } from './dnr';
+import { LEGACY_DYNAMIC_RULE_ID, buildRequestHeadersRule, sessionRuleIdForTab } from './dnr';
 import {
   buildApiUrl,
   buildProxyUrl,
@@ -113,21 +113,63 @@ const selectUserAgentProfile = async (message: LadderTargetMessage): Promise<Use
   return undefined;
 };
 
+// Older versions left a persistent, global credential rule behind. Remove it on every
+// service-worker start before opening a page with a tab-scoped session rule.
+const removeLegacyRule = chrome.declarativeNetRequest.updateDynamicRules({
+  removeRuleIds: [LEGACY_DYNAMIC_RULE_ID],
+});
+
+const openingTabs = new Set<number>();
+
+const prepareTab = async (requestedTabId?: number): Promise<number> => {
+  if (requestedTabId === undefined) {
+    const tab = await chrome.tabs.create({ url: 'about:blank' });
+    if (tab.id === undefined) {
+      throw new Error('Chrome did not create a tab');
+    }
+    return tab.id;
+  }
+
+  // Discard the source page before installing credentials for its tab.
+  await chrome.tabs.update(requestedTabId, { url: 'about:blank' });
+  return requestedTabId;
+};
+
+const openInPreparedTab = async (
+  requestedTabId: number | undefined,
+  targetUrl: string,
+  settings: LadderSettings,
+  selectedProfile: UserAgentProfileId | undefined,
+  isReader: boolean,
+) => {
+  await removeLegacyRule;
+  const tabId = await prepareTab(requestedTabId);
+  openingTabs.add(tabId);
+  const ruleId = sessionRuleIdForTab(tabId);
+  const rule = buildRequestHeadersRule(
+    settings,
+    { tabId, ...(isReader ? { initiatorDomain: chrome.runtime.id } : {}) },
+    selectedProfile,
+  );
+
+  try {
+    await chrome.declarativeNetRequest.updateSessionRules({
+      removeRuleIds: [ruleId],
+      addRules: rule ? [rule] : [],
+    });
+    await chrome.tabs.update(tabId, { url: targetUrl });
+  } catch (error) {
+    await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [ruleId] });
+    throw error;
+  } finally {
+    openingTabs.delete(tabId);
+  }
+};
+
 const openWithLadder = async (message: OpenWithLadderMessage): Promise<OpenWithLadderResponse> => {
   const selectedProfile = await selectUserAgentProfile(message);
-  const rule = buildRequestHeadersRule(message.settings, selectedProfile);
-  await chrome.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: [REQUEST_HEADERS_RULE_ID],
-    addRules: rule ? [rule] : [],
-  });
-
   const url = buildProxyUrl(message.settings.baseUrl, message.targetUrl);
-
-  if (message.tabId === undefined) {
-    await chrome.tabs.create({ url });
-  } else {
-    await chrome.tabs.update(message.tabId, { url });
-  }
+  await openInPreparedTab(message.tabId, url, message.settings, selectedProfile, false);
 
   return { url, selectedUserAgentProfile: selectedProfile };
 };
@@ -138,12 +180,6 @@ const openReaderWithLadder = async (message: OpenReaderWithLadderMessage): Promi
   }
 
   const selectedProfile = await selectUserAgentProfile(message);
-  const rule = buildRequestHeadersRule(message.settings, selectedProfile);
-  await chrome.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: [REQUEST_HEADERS_RULE_ID],
-    addRules: rule ? [rule] : [],
-  });
-
   const id = crypto.randomUUID();
   await chrome.storage.session.set({
     [readerSessionKey(id)]: {
@@ -154,14 +190,50 @@ const openReaderWithLadder = async (message: OpenReaderWithLadderMessage): Promi
   });
 
   const url = chrome.runtime.getURL(`reader.html?id=${encodeURIComponent(id)}`);
-  if (message.tabId === undefined) {
-    await chrome.tabs.create({ url });
-  } else {
-    await chrome.tabs.update(message.tabId, { url });
-  }
+  await openInPreparedTab(message.tabId, url, message.settings, selectedProfile, true);
 
   return { url, selectedUserAgentProfile: selectedProfile };
 };
+
+const isRuleTabUrl = (rule: chrome.declarativeNetRequest.Rule, url: string) => {
+  if (rule.condition.initiatorDomains?.includes(chrome.runtime.id)) {
+    return url.startsWith(chrome.runtime.getURL('reader.html'));
+  }
+  const filter = rule.condition.urlFilter;
+  return filter?.startsWith('|') === true && url.startsWith(filter.slice(1));
+};
+
+const cleanupTabRuleIfNeeded = async (tabId: number, changedUrl?: string) => {
+  if (openingTabs.has(tabId)) {
+    return;
+  }
+  const ruleId = sessionRuleIdForTab(tabId);
+  const rules = await chrome.declarativeNetRequest.getSessionRules();
+  const rule = rules.find(candidate => candidate.id === ruleId);
+  if (!rule) {
+    return;
+  }
+  const tab = await chrome.tabs.get(tabId);
+  if (changedUrl && tab.url && tab.url !== changedUrl) {
+    return;
+  }
+  if (!tab.url || !isRuleTabUrl(rule, tab.url)) {
+    await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [ruleId] });
+  }
+};
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.url === undefined && changeInfo.status !== 'complete') {
+    return;
+  }
+  void cleanupTabRuleIfNeeded(tabId, changeInfo.url).catch(() => {});
+});
+
+chrome.tabs.onRemoved.addListener(tabId => {
+  void chrome.declarativeNetRequest.updateSessionRules({
+    removeRuleIds: [sessionRuleIdForTab(tabId)],
+  }).catch(() => {});
+});
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!isOpenMessage(message) && !isReaderMessage(message)) {

@@ -206,6 +206,51 @@ index 56f2b0a..6d40693 100644
  
  	if rule.Headers.XForwardedFor != "" {
  		if rule.Headers.XForwardedFor != "none" {
+@@ -349,23 +445,23 @@ func rewriteHtml(bodyB []byte, u *url.URL, rule ruleset.Rule) string {
+ func rewriteHtml(bodyB []byte, u *url.URL, rule ruleset.Rule) string {
+-	// Rewrite the HTML
+-	body := string(bodyB)
+-
+-	proxyPrefix := basePath + "/https://" + u.Host + "/"
+-
+-	// images
+-	imagePattern := `<img\s+([^>]*\s+)?src="(/)([^"]*)"`
+-	re := regexp.MustCompile(imagePattern)
+-	body = re.ReplaceAllString(body, fmt.Sprintf(`<img $1 src="%s$3"`, proxyPrefix))
+-
+-	// scripts
+-	scriptPattern := `<script\s+([^>]*\s+)?src="(/)([^"]*)"`
+-	reScript := regexp.MustCompile(scriptPattern)
+-	body = reScript.ReplaceAllString(body, fmt.Sprintf(`<script $1 script="%s$3"`, proxyPrefix))
+-
+-	// body = strings.ReplaceAll(body, "srcset=\"/", "srcset=\""+proxyPrefix) // TODO: Needs a regex to rewrite the URL's
+-	body = strings.ReplaceAll(body, "href=\"/", "href=\""+proxyPrefix)
+-	body = strings.ReplaceAll(body, "url('/", "url('"+proxyPrefix)
+-	body = strings.ReplaceAll(body, "url(/", "url("+proxyPrefix)
+-	body = strings.ReplaceAll(body, "href=\"https://"+u.Host, "href=\""+proxyPrefix)
+-	return body
++	// Rewrite the HTML
++	body := string(bodyB)
++
++	proxyPrefix := basePath + "/" + u.Scheme + "://" + u.Host + "/"
++
++	// images
++	imagePattern := `<img\s+([^>]*\s+)?src="(/)([^"]*)"`
++	re := regexp.MustCompile(imagePattern)
++	body = re.ReplaceAllString(body, fmt.Sprintf(`<img $1 src="%s$3"`, proxyPrefix))
++
++	// scripts
++	scriptPattern := `<script\s+([^>]*\s+)?src="(/)([^"]*)"`
++	reScript := regexp.MustCompile(scriptPattern)
++	body = reScript.ReplaceAllString(body, fmt.Sprintf(`<script $1 script="%s$3"`, proxyPrefix))
++
++	// body = strings.ReplaceAll(body, "srcset=\"/", "srcset=\""+proxyPrefix) // TODO: Needs a regex to rewrite the URL's
++	body = strings.ReplaceAll(body, "href=\"/", "href=\""+proxyPrefix)
++	body = strings.ReplaceAll(body, "url('/", "url('"+proxyPrefix)
++	body = strings.ReplaceAll(body, "url(/", "url("+proxyPrefix)
++	body = strings.ReplaceAll(body, "href=\""+u.Scheme+"://"+u.Host, "href=\""+strings.TrimSuffix(proxyPrefix, "/"))
++	return body
+ }
 diff --git a/handlers/raw.go b/handlers/raw.go
 --- a/handlers/raw.go
 +++ b/handlers/raw.go
@@ -218,3 +263,70 @@ diff --git a/handlers/raw.go b/handlers/raw.go
  	if err != nil {
  		log.Println("ERROR:", err)
  		c.SendStatus(500)
+diff --git a/cmd/main.go b/cmd/main.go
+--- a/cmd/main.go
++++ b/cmd/main.go
+@@ -155,10 +155,17 @@ func main() {
+-	})
+-
+-	router.Get("/ruleset", handlers.Ruleset)
+-	router.Get("/raw/*", handlers.Raw)
+-	router.Post("/api", handlers.Api)
+-	router.Get("/api/*", handlers.Api)
+-	router.Get("/*", handlers.ProxySite(*ruleset))
+-
+-	log.Fatal(app.Listen(":" + *port))
++	})
++
++	router.Get("/ruleset", handlers.Ruleset)
++	router.Get("/__ladder_buddy_health", func(c *fiber.Ctx) error {
++		return c.SendString("ladder-buddy-ok")
++	})
++	router.Get("/raw/*", handlers.Raw)
++	router.Post("/api", handlers.Api)
++	router.Get("/api/*", handlers.Api)
++	router.Get("/*", handlers.ProxySite(*ruleset))
++
++	listenAddress := "127.0.0.1:" + *port
++	if os.Getenv("LADDER_BUDDY_BIND_ALL") == "true" {
++		listenAddress = ":" + *port
++	}
++	log.Fatal(app.Listen(listenAddress))
+ }
+diff --git a/handlers/ladder_buddy_rewrite_test.go b/handlers/ladder_buddy_rewrite_test.go
+new file mode 100644
+--- /dev/null
++++ b/handlers/ladder_buddy_rewrite_test.go
+@@ -0,0 +1,32 @@
++package handlers
++
++import (
++	"net/url"
++	"strings"
++	"testing"
++
++	"ladder/pkg/ruleset"
++)
++
++func TestLadderBuddyRewritePreservesSourceScheme(t *testing.T) {
++	for _, scheme := range []string{"http", "https"} {
++		t.Run(scheme, func(t *testing.T) {
++			u, err := url.Parse(scheme + "://127.0.0.1:8899/article")
++			if err != nil {
++				t.Fatal(err)
++			}
++			body := []byte(`<img src="/image.svg"><a href="/next">relative</a><a href="` + scheme + `://127.0.0.1:8899/absolute">absolute</a>`)
++			got := rewriteHtml(body, u, ruleset.Rule{})
++			prefix := basePath + "/" + scheme + "://127.0.0.1:8899/"
++			for _, want := range []string{
++				`src="` + prefix + `image.svg"`,
++				`href="` + prefix + `next"`,
++				`href="` + prefix + `absolute"`,
++			} {
++				if !strings.Contains(got, want) {
++					t.Errorf("rewritten HTML missing %q: %s", want, got)
++				}
++			}
++		})
++	}
++}

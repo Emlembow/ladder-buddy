@@ -19,48 +19,59 @@
       </section>
 
       <p id="status" role="status"></p>
+      <button id="retry-button" class="retry-button" type="button" hidden>Retry connection</button>
 
       <details id="settings-panel" class="settings-panel">
         <summary>
-          <span>Settings</span>
+          <span>Advanced settings</span>
           <span id="settings-summary">Loading...</span>
         </summary>
 
         <form id="settings-form">
           <label>
-            Ladder URL
-            <input id="base-url" name="baseUrl" type="url" autocomplete="url" required />
-          </label>
-
-          <label>
-            Auth
-            <select id="auth-mode" name="authMode">
-              <option value="none">None</option>
-              <option value="basic">Basic</option>
-              <option value="cloudflareAccess">Cloudflare Access</option>
+            Connection
+            <select id="connection-mode" name="connectionMode">
+              <option value="local">This Mac (automatic)</option>
+              <option value="custom">Custom Ladder server</option>
             </select>
           </label>
 
-          <fieldset id="basic-fields" hidden>
+          <fieldset id="custom-connection-fields" hidden>
             <label>
-              Username
-              <input id="basic-username" name="basicUsername" autocomplete="username" />
+              Ladder URL
+              <input id="base-url" name="baseUrl" type="url" autocomplete="url" />
             </label>
-            <label>
-              Password
-              <input id="basic-password" name="basicPassword" type="password" autocomplete="current-password" />
-            </label>
-          </fieldset>
 
-          <fieldset id="cloudflare-fields" hidden>
             <label>
-              Client ID
-              <input id="cloudflare-client-id" name="cloudflareClientId" autocomplete="off" />
+              Auth
+              <select id="auth-mode" name="authMode">
+                <option value="none">None</option>
+                <option value="basic">Basic</option>
+                <option value="cloudflareAccess">Cloudflare Access</option>
+              </select>
             </label>
-            <label>
-              Client secret
-              <input id="cloudflare-client-secret" name="cloudflareClientSecret" type="password" autocomplete="off" />
-            </label>
+
+            <fieldset id="basic-fields" hidden>
+              <label>
+                Username
+                <input id="basic-username" name="basicUsername" autocomplete="username" />
+              </label>
+              <label>
+                Password
+                <input id="basic-password" name="basicPassword" type="password" autocomplete="current-password" />
+              </label>
+            </fieldset>
+
+            <fieldset id="cloudflare-fields" hidden>
+              <label>
+                Client ID
+                <input id="cloudflare-client-id" name="cloudflareClientId" autocomplete="off" />
+              </label>
+              <label>
+                Client secret
+                <input id="cloudflare-client-secret" name="cloudflareClientSecret" type="password" autocomplete="off" />
+              </label>
+            </fieldset>
           </fieldset>
 
           <label>

@@ -1,199 +1,61 @@
 # Ladder Buddy
 
-Ladder Buddy is a Chrome extension that pairs with your own [everywall/ladder](https://github.com/everywall/ladder) proxy. Click the extension on a page, then open that page through Ladder or open a script-stripped reader view.
+Ladder Buddy opens a page through a local [Ladder](https://github.com/everywall/ladder) proxy or in a script-free reader view. It can try several upstream user-agent profiles automatically. Use it only for sites and content you own, administer, or are authorized to access and transform.
 
-Use Ladder Buddy only for sites and content you own, administer, or are otherwise authorized to access and transform.
+## Install on a Mac
 
-## What Is Bundled
+Requires macOS, Google Chrome, and an Apple Silicon or Intel Mac. No Docker, Node.js, Git, or administrator access is needed on the Mac being set up.
 
-- A Manifest V3 Chrome extension.
-- A Docker Compose setup for a Ladder Buddy image.
-- A tiny patch applied on top of upstream `everywall/ladder` at Docker build time.
-- Copy/paste setup commands plus a slower manual path if you want to inspect every step.
+1. Paste this command into Terminal:
 
-This repo does not vendor or replace Ladder. The Docker image clones `everywall/ladder`, applies the patch in `docker/ladder-buddy/user-agent-profiles.patch`, and builds the binary locally.
-
-## Quick Start
-
-Prerequisites:
-
-- Docker Desktop or Docker Engine with Compose.
-- Chrome or another Chromium browser that supports unpacked extensions.
-- Node.js 24+ and Corepack.
-- Git.
-
-### macOS, Linux, or Git Bash
-
-```bash
-git clone https://github.com/Emlembow/ladder-buddy.git
-cd ladder-buddy
-corepack enable
-pnpm install
-pnpm preflight
-cp .env.example .env
-docker compose up -d ladder
-```
-
-### Windows PowerShell
-
-```powershell
-git clone https://github.com/Emlembow/ladder-buddy.git
-cd ladder-buddy
-corepack enable
-pnpm install
-pnpm preflight
-Copy-Item .env.example .env
-docker compose up -d ladder
-```
-
-Then load the extension:
-
-1. Open `chrome://extensions`.
-2. Turn on **Developer mode**.
-3. Click **Load unpacked**.
-4. Select the `dist` folder inside this repo.
-5. Pin **Ladder Buddy** from Chrome's extensions menu.
-
-Configure Ladder Buddy:
-
-- Ladder URL: `http://127.0.0.1:8080`
-- Auth: `Basic`
-- Username: `admin`
-- Password: `change-me`
-- Upstream UA: `Auto try profiles`
-
-After that, the settings panel stays collapsed and the popup opens directly to **Open reader** and **Open proxy**.
-
-## Manual Setup
-
-Use this path if you do not want to run the quick commands blindly.
-
-1. Clone the repo.
-
-   ```bash
-   git clone https://github.com/Emlembow/ladder-buddy.git
-   cd ladder-buddy
+   ```sh
+   bash -o pipefail -c 'curl -fsSL https://github.com/Emlembow/ladder-buddy/releases/latest/download/install-macos.sh | bash'
    ```
 
-2. Inspect what Docker will build.
+2. In the Chrome extensions page opened by the installer, turn on **Developer mode**, click **Load unpacked**, and select `~/Library/Application Support/Ladder Buddy/extension`. This Chrome step is required once for a private unpacked extension.
 
-   ```bash
-   sed -n '1,220p' docker-compose.yml
-   sed -n '1,220p' docker/ladder-buddy/Dockerfile
-   sed -n '1,260p' docker/ladder-buddy/user-agent-profiles.patch
-   ```
+3. Pin Ladder Buddy from Chrome's extensions menu. Open a page and click **Open reader** or **Open proxy**. The extension gets its local connection automatically; there is no URL or password to enter.
 
-   On PowerShell, use:
+Run the same Terminal command again to update or repair the installation. It preserves your extension settings and local credentials. After an update, click **Reload** for Ladder Buddy on `chrome://extensions`.
 
-   ```powershell
-   Get-Content docker-compose.yml
-   Get-Content docker\ladder-buddy\Dockerfile
-   Get-Content docker\ladder-buddy\user-agent-profiles.patch
-   ```
+The installer downloads the archive for your Mac, verifies its SHA-256 checksum, installs the Ladder binary and helper under `~/Library/Application Support/Ladder Buddy`, and starts a per-user login agent. It registers a Chrome native messaging host so the extension can discover the live local address and credentials. Ladder listens only on `127.0.0.1` and chooses another free port when 8080 is busy. A private unsigned build may prompt a macOS security warning.
 
-3. Create your local environment file and change anything you dislike.
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   PowerShell:
-
-   ```powershell
-   Copy-Item .env.example .env
-   notepad .env
-   ```
-
-   Useful values:
-
-   ```dotenv
-   LADDER_PORT=8080
-   LADDER_USERPASS=admin:change-me
-   LADDER_ALLOW_REQUEST_USER_AGENT=true
-   LADDER_ALLOW_CUSTOM_USER_AGENT=false
-   ```
-
-4. Build and start Ladder.
-
-   ```bash
-   docker compose build ladder
-   docker compose up -d ladder
-   docker compose ps ladder
-   ```
-
-   To watch logs, run `docker compose logs -f ladder` in a separate terminal.
-
-5. Build the extension.
-
-   ```bash
-   corepack enable
-   pnpm install
-   pnpm preflight
-   ```
-
-6. Load `dist` from `chrome://extensions` using **Load unpacked**.
+For inspection before running it, download [`install-macos.sh`](https://github.com/Emlembow/ladder-buddy/releases/latest/download/install-macos.sh) from the release page and read it first. Release archives include the corresponding patched Ladder source and license notices.
 
 ## Using Ladder Buddy
 
-- **Open reader** fetches the current page through Ladder's `/api` endpoint, strips executable scripts and common page furniture, then renders the article content in an extension page. Images are still loaded through Ladder.
-- **Open proxy** opens the current page as `LADDER_BASE_URL/https://current-page.example/path`.
-- **Settings** stores the Ladder URL, auth mode, upstream user-agent mode, and reader blocklist in `chrome.storage.local`.
+- **Open reader** fetches the page through Ladder's `/api` endpoint, removes scripts and common page furniture, then displays it in an extension page. Images are loaded through Ladder.
+- **Open proxy** navigates the tab through Ladder's proxy, including its HTML and asset rewriting.
+- **Advanced settings** contains upstream user-agent choices and the reader blocklist. **Auto try profiles** probes the bundled profiles and uses the first usable response. A user-agent string alone does not provide verified crawler identity.
 
-Reader mode is blocklist-based and empty by default. Add one hostname per line, or separate entries with commas/spaces:
+Reader mode is blocklist-based and empty by default. Add one hostname per line, or separate entries with commas or spaces:
 
 ```text
 example.com
 *.internal.example
 ```
 
-Exact entries match only that host. Wildcard entries match the base host and its subdomains.
+An exact entry matches only that host. A wildcard entry matches the base host and subdomains.
 
-## Why This Includes Docker
+### If the extension says the helper is missing
 
-Vanilla Ladder works for the basic proxy path if you set **Upstream UA** to `Server default` and configure Ladder's container-wide `USER_AGENT`.
+Run the install command again, then reload Ladder Buddy on `chrome://extensions`. If Chrome reports an incompatible version, install the latest release and reload the extension. The installer can be rerun without clearing settings.
 
-The bundled Docker image is recommended because Ladder Buddy can also send per-request user-agent profile choices. The patch adds:
+## Alternate Docker setup
 
-- `X-Ladder-User-Agent-Profile`
-- optional `X-Ladder-User-Agent`
-- `/api` support for `userAgentProfile` and `userAgent`
-- upstream status reporting for profile probing
-
-That lets **Auto try profiles** test bundled profiles and use the first usable response.
-
-## Cloudflare Access
-
-If you expose Ladder outside your machine, protect it. The common setup is:
-
-1. Run Ladder behind a Cloudflare Tunnel.
-2. Put the public hostname behind Cloudflare Access.
-3. Create a Cloudflare Access service token.
-4. In Ladder Buddy, set Auth to `Cloudflare Access`.
-5. Paste the Client ID and Client secret.
-
-Keeping `LADDER_USERPASS` enabled as a second gate is recommended.
-
-More details are in [docs/ladder.md](docs/ladder.md).
-
-## Credits
-
-- [everywall/ladder](https://github.com/everywall/ladder) is the proxy Ladder Buddy pairs with. The Docker image in this repo builds from upstream Ladder and applies a small compatibility patch.
-- This project started from [Emlembow/chrome-ext-boilerplate](https://github.com/Emlembow/chrome-ext-boilerplate).
+The [Docker instructions](docs/ladder.md) remain available for development, Linux, Windows, or a separately hosted Ladder instance. That path requires manual connection settings in the extension. The Mac installer is the recommended route for friends using Chrome.
 
 ## Development
 
-```bash
-corepack enable
-pnpm install
-pnpm dev
-```
+This repository contains the Chrome extension, Mac helper, release scripts, and a patch to a pinned upstream Ladder commit. To build locally, install Node.js 24+, pnpm 10+, Go, and Git:
 
-Load `dist/` from `chrome://extensions` with Developer mode enabled.
-
-## Validation
-
-```bash
+```sh
+pnpm install --frozen-lockfile
 pnpm preflight
 ```
 
-`pnpm preflight` runs TypeScript, ESLint, Vitest, and the production build.
+`pnpm preflight` runs TypeScript, ESLint, Vitest, and the extension build. Release automation builds both `darwin/arm64` and `darwin/amd64` binaries and packages the patched upstream source.
+
+## Credits and licenses
+
+[everywall/ladder](https://github.com/everywall/ladder) is GPL-3.0-licensed software. Ladder Buddy applies a small compatibility and loopback-listener patch and includes the corresponding source and notices in binary releases. The extension and helper are MIT-licensed; see [LICENSE](LICENSE). This project started from [Emlembow/chrome-ext-boilerplate](https://github.com/Emlembow/chrome-ext-boilerplate).
