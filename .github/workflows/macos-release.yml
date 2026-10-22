@@ -22,7 +22,7 @@ jobs:
           cache: pnpm
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.26'
+          go-version: '1.26.10'
       - name: Verify release version
         env:
           RELEASE_TAG: ${{ github.ref_name }}
