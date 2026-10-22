@@ -1,3 +1,3 @@
 module github.com/Emlembow/ladder-buddy/mac/helper
 
-go 1.22
+go 1.26.10

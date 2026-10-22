@@ -1,7 +1,7 @@
 ARG LADDER_REF=76143f7473a86e750787cf6f44756964363f9bbc
 ARG VERSION=ladder-buddy
 
-FROM golang:1.26 AS build
+FROM golang:1.26.10 AS build
 ARG LADDER_REF
 ARG VERSION
 
@@ -13,7 +13,8 @@ RUN git init && \
     test "$(git rev-parse HEAD)" = "${LADDER_REF}"
 
 COPY docker/ladder-buddy/user-agent-profiles.patch /tmp/user-agent-profiles.patch
-RUN git apply /tmp/user-agent-profiles.patch
+COPY docker/ladder-buddy/security-dependencies.patch /tmp/security-dependencies.patch
+RUN git apply /tmp/user-agent-profiles.patch /tmp/security-dependencies.patch
 
 RUN go mod download
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X ladder/handlers.version=${VERSION}" -o ladder cmd/main.go
